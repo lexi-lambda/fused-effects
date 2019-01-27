@@ -3,6 +3,7 @@ module Control.Effect.Resource
 ( Resource(..)
 , bracket
 , bracketOnError
+, catchIO
 , runResource
 , ResourceC(..)
 ) where
@@ -14,18 +15,21 @@ import qualified Control.Exception as Exc
 import           Control.Monad.IO.Class
 
 data Resource m k
-  = forall resource any output . Resource (m resource) (resource -> m any) (resource -> m output) (output -> k)
-  | forall resource any output . OnError  (m resource) (resource -> m any) (resource -> m output) (output -> k)
+  = forall resource any output . Resource (m resource) (resource -> m any) (resource -> m output)    (output -> k)
+  | forall resource any output . OnError  (m resource) (resource -> m any) (resource -> m output)    (output -> k)
+  | forall output              . CatchIO  (m output)   (Exc.SomeException -> m output) (output -> k)
 
 deriving instance Functor (Resource m)
 
 instance HFunctor Resource where
   hmap f (Resource acquire release use k) = Resource (f acquire) (f . release) (f . use) k
   hmap f (OnError acquire release use k)  = OnError  (f acquire) (f . release) (f . use) k
+  hmap f (CatchIO go cleanup k)           = CatchIO (f go) (f . cleanup) k
 
 instance Effect Resource where
   handle state handler (Resource acquire release use k) = Resource (handler (acquire <$ state)) (handler . fmap release) (handler . fmap use) (handler . fmap k)
   handle state handler (OnError acquire release use k)  = OnError  (handler (acquire <$ state)) (handler . fmap release) (handler . fmap use) (handler . fmap k)
+  handle state handler (CatchIO go cleanup k)           = CatchIO  (handler (go <$ state)) (\se -> handler (cleanup se <$ state)) (handler . fmap k)
 
 -- | Provides a safe idiom to acquire and release resources safely.
 --
@@ -53,6 +57,12 @@ bracketOnError :: (Member Resource sig, Carrier sig m)
                -> m a
 bracketOnError acquire release use = send (OnError acquire release use ret)
 
+catchIO :: (Member Resource sig, Carrier sig m)
+        => m a
+        -> (forall e . Exc.Exception e => e -> m a)
+        -> m a
+catchIO go cleanup = send (CatchIO go (cleanup . Exc.SomeException) ret)        
+
 runResource :: (Carrier sig m, MonadIO m)
             => (forall x . m x -> IO x)
             -> Eff (ResourceC m) a
@@ -78,5 +88,9 @@ instance (Carrier sig m, MonadIO m) => Carrier (Resource :+: sig) (ResourceC m) 
                                                     (handler (runResourceC handler acquire))
                                                     (handler . runResourceC handler . release)
                                                     (handler . runResourceC handler . use))
+                                            >>= runResourceC handler . k
+        CatchIO go cleanup k          -> liftIO (Exc.catch 
+                                                    (handler (runResourceC handler go))
+                                                    (handler . runResourceC handler . cleanup))
                                             >>= runResourceC handler . k
     ) op)
