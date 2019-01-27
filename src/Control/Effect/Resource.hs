@@ -57,6 +57,9 @@ bracketOnError :: (Member Resource sig, Carrier sig m)
                -> m a
 bracketOnError acquire release use = send (OnError acquire release use ret)
 
+-- | Like 'Control.Effect.Error.catchError', but delegating to
+-- 'Control.Exception.catch' under the hood, which allows catching
+-- errors that might occur when lifting 'IO' computations.
 catchIO :: (Member Resource sig, Carrier sig m)
         => m a
         -> (forall e . Exc.Exception e => e -> m a)
