@@ -17,7 +17,7 @@ import           Control.Monad.IO.Class
 data Resource m k
   = forall resource any output . Resource (m resource) (resource -> m any) (resource -> m output)    (output -> k)
   | forall resource any output . OnError  (m resource) (resource -> m any) (resource -> m output)    (output -> k)
-  | forall output              . CatchIO  (m output)   (Exc.SomeException -> m output) (output -> k)
+  | forall output e . Exc.Exception e => CatchIO (m output) (e -> m output) (output -> k)
 
 deriving instance Functor (Resource m)
 
@@ -60,11 +60,11 @@ bracketOnError acquire release use = send (OnError acquire release use ret)
 -- | Like 'Control.Effect.Error.catchError', but delegating to
 -- 'Control.Exception.catch' under the hood, which allows catching
 -- errors that might occur when lifting 'IO' computations.
-catchIO :: (Member Resource sig, Carrier sig m)
+catchIO :: (Member Resource sig, Carrier sig m, Exc.Exception e)
         => m a
-        -> (forall e . Exc.Exception e => e -> m a)
+        -> (e -> m a)
         -> m a
-catchIO go cleanup = send (CatchIO go (cleanup . Exc.SomeException) ret)        
+catchIO go cleanup = send (CatchIO go cleanup ret)
 
 runResource :: (Carrier sig m, MonadIO m)
             => (forall x . m x -> IO x)
@@ -87,12 +87,12 @@ instance (Carrier sig m, MonadIO m) => Carrier (Resource :+: sig) (ResourceC m) 
                                                     (handler . runResourceC handler . release)
                                                     (handler . runResourceC handler . use))
                                             >>= runResourceC handler . k
-        OnError acquire release use k -> liftIO (Exc.bracketOnError 
+        OnError acquire release use k -> liftIO (Exc.bracketOnError
                                                     (handler (runResourceC handler acquire))
                                                     (handler . runResourceC handler . release)
                                                     (handler . runResourceC handler . use))
                                             >>= runResourceC handler . k
-        CatchIO go cleanup k          -> liftIO (Exc.catch 
+        CatchIO go cleanup k          -> liftIO (Exc.catch
                                                     (handler (runResourceC handler go))
                                                     (handler . runResourceC handler . cleanup))
                                             >>= runResourceC handler . k
