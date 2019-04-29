@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFunctor, ExplicitForAll, FlexibleContexts, FlexibleInstances, KindSignatures, MultiParamTypeClasses, TypeOperators, UndecidableInstances #-}
+{-# LANGUAGE DeriveFunctor, ExplicitForAll, FlexibleContexts, FlexibleInstances, GADTs, KindSignatures, MultiParamTypeClasses, TypeOperators, UndecidableInstances #-}
 module Control.Effect.State.Internal
 ( State(..)
 , get
@@ -9,7 +9,6 @@ module Control.Effect.State.Internal
 ) where
 
 import Control.Effect.Carrier
-import Control.Effect.Sum
 import Data.Coerce
 import Prelude hiding (fail)
 

@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFunctor, EmptyCase, KindSignatures, MultiParamTypeClasses #-}
+{-# LANGUAGE DataKinds, FlexibleInstances, DeriveFunctor, EmptyCase, KindSignatures, MultiParamTypeClasses #-}
 module Control.Effect.Pure
 ( Pure
 , run
@@ -58,6 +58,6 @@ instance Monad PureC where
   PureC a >>= f = f a
   {-# INLINE (>>=) #-}
 
-instance Carrier Pure PureC where
-  eff v = case v of {}
+instance Carrier '[Pure] PureC where
+  eff _ = error "unreachable"
   {-# INLINE eff #-}

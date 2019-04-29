@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFunctor, ExplicitForAll, FlexibleContexts, FlexibleInstances, KindSignatures, MultiParamTypeClasses, TypeOperators, UndecidableInstances #-}
+{-# LANGUAGE DataKinds, DeriveFunctor, ExplicitForAll, FlexibleContexts, FlexibleInstances, KindSignatures, MultiParamTypeClasses, TypeOperators, UndecidableInstances #-}
 module Control.Effect.State.Strict
 ( State (..)
 , get
@@ -15,7 +15,6 @@ module Control.Effect.State.Strict
 import Control.Applicative (Alternative(..))
 import Control.Effect.Carrier
 import Control.Effect.State.Internal
-import Control.Effect.Sum
 import Control.Monad (MonadPlus(..))
 import Control.Monad.Fail
 import Control.Monad.IO.Class
@@ -83,10 +82,11 @@ instance MonadTrans (StateC s) where
   lift m = StateC (\ s -> (,) s <$> m)
   {-# INLINE lift #-}
 
-instance (Carrier sig m, Effect sig) => Carrier (State s :+: sig) (StateC s m) where
-  eff (L (Get   k)) = StateC (\ s -> runState s (k s))
-  eff (L (Put s k)) = StateC (\ _ -> runState s k)
-  eff (R other)     = StateC (\ s -> eff (handle (s, ()) (uncurry runState) other))
+instance (Carrier sig m) => Carrier (State s ': sig) (StateC s m) where
+  eff u = case decomp u of
+    Right (Get   k) -> StateC (\ s -> runState s (k s))
+    Right (Put s k) -> StateC (\ _ -> runState s k)
+    Left other      -> StateC (\ s -> eff (handle (s, ()) (uncurry runState) other))
   {-# INLINE eff #-}
 
 

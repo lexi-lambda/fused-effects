@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFunctor, ExistentialQuantification, FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, StandaloneDeriving, TypeOperators, UndecidableInstances #-}
+{-# LANGUAGE DeriveFunctor, ExistentialQuantification, FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, StandaloneDeriving, TypeOperators, UndecidableInstances, ViewPatterns, DataKinds, TypeFamilies #-}
 module Control.Effect.Reader
 ( Reader(..)
 , ask
@@ -10,7 +10,6 @@ module Control.Effect.Reader
 
 import Control.Applicative (Alternative(..), liftA2)
 import Control.Effect.Carrier
-import Control.Effect.Sum
 import Control.Monad (MonadPlus(..))
 import Control.Monad.Fail
 import Control.Monad.IO.Class
@@ -102,10 +101,11 @@ instance MonadUnliftIO m => MonadUnliftIO (ReaderC r m) where
   withRunInIO inner = ReaderC $ \r -> withRunInIO $ \go -> inner (go . runReader r)
   {-# INLINE withRunInIO #-}
 
-instance Carrier sig m => Carrier (Reader r :+: sig) (ReaderC r m) where
-  eff (L (Ask       k)) = ReaderC (\ r -> runReader r (k r))
-  eff (L (Local f m k)) = ReaderC (\ r -> runReader (f r) m) >>= k
-  eff (R other)         = ReaderC (\ r -> eff (handlePure (runReader r) other))
+instance Carrier sig m => Carrier (Reader r ': sig) (ReaderC r m) where
+  eff u = case decomp u of
+    (Right (Ask       k)) -> ReaderC (\ r -> runReader r (k r))
+    (Right (Local f m k)) -> ReaderC (\ r -> runReader (f r) m) >>= k
+    (Left other)         -> ReaderC (\ r -> eff (handlePure (runReader r) other))
   {-# INLINE eff #-}
 
 
