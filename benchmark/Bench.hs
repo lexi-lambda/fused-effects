@@ -1,26 +1,23 @@
-{-# LANGUAGE DeriveFunctor, FlexibleContexts, FlexibleInstances, LambdaCase, MultiParamTypeClasses, RankNTypes, TypeApplications, TypeOperators, UndecidableInstances, GADTs #-}
+{-# LANGUAGE DeriveFunctor, FlexibleContexts, FlexibleInstances, GADTs, LambdaCase, MultiParamTypeClasses, RankNTypes, TypeApplications, TypeOperators, UndecidableInstances #-}
 module Main where
 
 import Control.Effect
 import Control.Effect.Carrier
---import Control.Effect.Interpret
 import Control.Effect.Pure
 import Control.Effect.Writer
 import Control.Effect.State
 import Control.Monad (ap, replicateM_)
 import Criterion.Main
 import Data.Monoid (Sum(..))
+import Control.Monad
+import Data.Foldable
+import Control.Effect.Reader
 
 main :: IO ()
 main = defaultMain
   [
     bgroup "WriterC"
-    [ bgroup "Cod"
-      [ bench "100"   $ whnf (run . runCod pure . execWriter @(Sum Int) . runCod pure . tellLoop) 100
-      , bench "1000"  $ whnf (run . runCod pure . execWriter @(Sum Int) . runCod pure . tellLoop) 1000
-      , bench "10000" $ whnf (run . runCod pure . execWriter @(Sum Int) . runCod pure . tellLoop) 10000
-      ]
-    , bgroup "standalone"
+    [ bgroup "standalone"
       [ bench "100"   $ whnf (run . execWriter @(Sum Int) . tellLoop) 100
       , bench "1000"  $ whnf (run . execWriter @(Sum Int) . tellLoop) 1000
       , bench "10000" $ whnf (run . execWriter @(Sum Int) . tellLoop) 10000
@@ -28,16 +25,26 @@ main = defaultMain
     ]
   ,
     bgroup "Strict StateC"
-    [ bgroup "Cod"
-      [ bench "100"   $ whnf (run . runCod pure . execState @(Sum Int) 0 . runCod pure . modLoop) 100
-      , bench "1000"  $ whnf (run . runCod pure . execState @(Sum Int) 0 . runCod pure . modLoop) 1000
-      , bench "10000" $ whnf (run . runCod pure . execState @(Sum Int) 0 . runCod pure . modLoop) 10000
-      ]
-    , bgroup "standalone"
+    [ bgroup "standalone"
       [ bench "100"   $ whnf (run . execState @(Sum Int) 0 . modLoop) 100
       , bench "1000"  $ whnf (run . execState @(Sum Int) 0 . modLoop) 1000
       , bench "10000" $ whnf (run . execState @(Sum Int) 0 . modLoop) 10000
       ]
+    ]
+  , bgroup "ReaderC+WriterC+StateC"
+    [ bench "100"   $ whnf (run . runReader True . runWriter @String . execState @Int 0 . go) 100
+    , bench "1000"  $ whnf (run . runReader True . runWriter @String . execState @Int 0 . go) 1000
+    , bench "10000" $ whnf (run . runReader True . runWriter @String . execState @Int 0 . go) 10000
+    ]
+  , bgroup "WriterC+ReaderC+StateC"
+    [ bench "100"   $ whnf (run . runWriter @String . runReader True . execState @Int 0 . go) 100
+    , bench "1000"  $ whnf (run . runWriter @String . runReader True . execState @Int 0 . go) 1000
+    , bench "10000" $ whnf (run . runWriter @String . runReader True . execState @Int 0 . go) 10000
+    ]
+  , bgroup "StateC+WriterC+ReaderC"
+    [ bench "100"   $ whnf (run . execState @Int 0 . runWriter @String . runReader True . go) 100
+    , bench "1000"  $ whnf (run . execState @Int 0 . runWriter @String . runReader True . go) 1000
+    , bench "10000" $ whnf (run . execState @Int 0 . runWriter @String . runReader True . go) 10000
     ]
   -- ,
   --   bgroup "InterpretC vs InterpretStateC vs StateC"
@@ -58,6 +65,22 @@ main = defaultMain
   --     ]
   --   ]
   ]
+
+go :: ( Member (State Int) sig
+      , Member (Writer String) sig
+      , Member (Reader Bool) sig
+      , Carrier sig m
+      )
+   => Int
+   -> m ()
+go n = forM_ (take n (cycle ["foo", "barff", "bazzzzz"])) $ \str -> do
+  let len = length str
+  modify @Int (+ len)
+  curr <- get @Int
+  when (curr < n) $ do
+    should <- ask
+    let str' = if should then reverse str else str
+    tell str'
 
 tellLoop :: (Applicative m, Carrier sig m, Member (Writer (Sum Int)) sig) => Int -> m ()
 tellLoop i = replicateM_ i (tell (Sum (1 :: Int)))
