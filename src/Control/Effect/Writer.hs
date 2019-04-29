@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFunctor, ExistentialQuantification, FlexibleContexts, FlexibleInstances, GeneralizedNewtypeDeriving, MultiParamTypeClasses, ScopedTypeVariables, StandaloneDeriving, TypeOperators, UndecidableInstances #-}
+{-# LANGUAGE DataKinds, DeriveFunctor, ExistentialQuantification, FlexibleContexts, FlexibleInstances, GADTs, GeneralizedNewtypeDeriving, MultiParamTypeClasses, ScopedTypeVariables, StandaloneDeriving, TypeOperators, UndecidableInstances #-}
 module Control.Effect.Writer
 ( Writer(..)
 , tell
@@ -13,11 +13,11 @@ module Control.Effect.Writer
 import Control.Applicative (Alternative(..))
 import Control.Effect.Carrier
 import Control.Effect.State
-import Control.Effect.Sum
 import Control.Monad (MonadPlus(..))
 import Control.Monad.Fail
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
+import Data.Coerce
 
 data Writer w m k
   = Tell w k
@@ -89,24 +89,25 @@ execWriter = fmap fst . runWriter
 newtype WriterC w m a = WriterC { runWriterC :: StateC w m a }
   deriving (Alternative, Applicative, Functor, Monad, MonadFail, MonadIO, MonadPlus, MonadTrans)
 
-instance (Monoid w, Carrier sig m, Effect sig) => Carrier (Writer w :+: sig) (WriterC w m) where
-  eff (L (Tell w     k)) = WriterC $ do
-    modify (`mappend` w)
-    runWriterC k
-  eff (L (Listen   m k)) = WriterC $ do
-    w <- get
-    put (mempty :: w)
-    a <- runWriterC m
-    w' <- get
-    modify (mappend (w :: w))
-    runWriterC (k w' a)
-  eff (L (Censor f m k)) = WriterC $ do
-    w <- get
-    put (mempty :: w)
-    a <- runWriterC m
-    modify (mappend w . f)
-    runWriterC (k a)
-  eff (R other)          = WriterC (eff (R (handleCoercible other)))
+instance (Monoid w, Carrier sig m) => Carrier (Writer w ': sig) (WriterC w m) where
+  eff u = eff' (decomp u) where
+    eff' (Right (Tell w     k)) = WriterC $ do
+      modify (`mappend` w)
+      runWriterC k
+    eff' (Right (Listen   m k)) = WriterC $ do
+      w <- get
+      put (mempty :: w)
+      a <- runWriterC m
+      w' <- get
+      modify (mappend (w :: w))
+      runWriterC (k w' a)
+    eff' (Right (Censor f m k)) = WriterC $ do
+      w <- get
+      put (mempty :: w)
+      a <- runWriterC m
+      modify (mappend w . f)
+      runWriterC (k a)
+    eff' (Left other) = WriterC $ StateC $ \s -> eff (handle (s, ()) (\(w, WriterC act) -> runStateC act w) other)
   {-# INLINE eff #-}
 
 
