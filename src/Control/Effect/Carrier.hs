@@ -55,13 +55,17 @@ data Union (r :: [(* -> *) -> * -> *]) (m :: * -> *) a where
 
 instance Functor (Union r m) where
   fmap f (Union w t) = Union w (fmap' f t)
+  {-# INLINE fmap #-}
 
 instance HFunctor (Union r) where
   fmap' f (Union w t) = Union w (fmap' f t)
+  {-# INLINE fmap' #-}
   hmap h (Union w t) = Union w (hmap h t)
+  {-# INLINE hmap #-}
 
 instance Effect (Union r) where
   handle s f (Union w e) = Union w $ handle s f e
+  {-# INLINE handle #-}
 
 -- | A proof that the effect @e@ is available somewhere inside of the effect
 -- stack @r@.
@@ -154,7 +158,7 @@ prj (Union (s :: SNat n) a) =
 collapse :: Union '[e] m a -> e m a
 collapse (Union SZ a) = a
 collapse _ = error "impossible"
--- {-# INLINE extract #-}
+{-# INLINE collapse #-}
 
 
 ------------------------------------------------------------------------------
